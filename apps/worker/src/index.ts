@@ -39,6 +39,8 @@ type OpenMeteoResponse = {
   };
 };
 
+type OpenMeteoBatchResponse = OpenMeteoResponse | OpenMeteoResponse[];
+
 const supabaseUrl = process.env.SUPABASE_URL;
 const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const pollIntervalMs = Number.parseInt(process.env.POLL_INTERVAL_MS ?? "300000", 10);
@@ -216,14 +218,14 @@ async function seedLocations() {
   }
 }
 
-async function fetchLocationForecast(location: LocationSeed) {
+async function fetchRegionForecasts(regionLocations: LocationSeed[]) {
   const params = new URLSearchParams({
-    latitude: String(location.latitude),
-    longitude: String(location.longitude),
+    latitude: regionLocations.map((location) => String(location.latitude)).join(","),
+    longitude: regionLocations.map((location) => String(location.longitude)).join(","),
     current:
       "temperature_2m,relative_humidity_2m,apparent_temperature,is_day,precipitation,weather_code,cloud_cover,surface_pressure,wind_speed_10m,wind_direction_10m,wind_gusts_10m",
     daily: "temperature_2m_max,temperature_2m_min,precipitation_probability_max,sunrise,sunset",
-    timezone: location.timezone,
+    timezone: regionLocations.map((location) => location.timezone).join(","),
     forecast_days: "1",
     wind_speed_unit: "kmh",
     precipitation_unit: "mm",
@@ -231,14 +233,15 @@ async function fetchLocationForecast(location: LocationSeed) {
 
   const response = await fetchWithRetry(
     `https://api.open-meteo.com/v1/forecast?${params.toString()}`,
-    `Open-Meteo forecast request for ${location.slug}`,
+    `Open-Meteo forecast request for ${regionLocations[0]?.region_slug ?? "region"}`,
   );
 
   if (!response.ok) {
-    throw new Error(`Open-Meteo forecast failed for ${location.slug} with ${response.status}.`);
+    throw new Error(`Open-Meteo forecast failed for ${regionLocations[0]?.region_slug ?? "region"} with ${response.status}.`);
   }
 
-  return (await response.json()) as OpenMeteoResponse;
+  const payload = (await response.json()) as OpenMeteoBatchResponse;
+  return Array.isArray(payload) ? payload : [payload];
 }
 
 function normalizeSnapshot(location: LocationSeed, payload: OpenMeteoResponse) {
@@ -284,12 +287,13 @@ async function syncRegion(regionSlug: RegionSlug) {
   const regionLocations = enabledLocations.filter((location) => location.region_slug === regionSlug);
 
   try {
-    const snapshots = [];
+    const payloads = await fetchRegionForecasts(regionLocations);
 
-    for (const location of regionLocations) {
-      const payload = await fetchLocationForecast(location);
-      snapshots.push(normalizeSnapshot(location, payload));
+    if (payloads.length !== regionLocations.length) {
+      throw new Error(`Open-Meteo returned ${payloads.length} payloads for ${regionLocations.length} locations in ${regionSlug}.`);
     }
+
+    const snapshots = regionLocations.map((location, index) => normalizeSnapshot(location, payloads[index]));
 
     const { error } = await supabase.from("weather_snapshots").upsert(snapshots, {
       onConflict: "location_slug",
