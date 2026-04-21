@@ -27,24 +27,33 @@ export function AuthCard() {
     }
 
     startTransition(async () => {
-      const action =
-        mode === "sign-in"
-          ? supabase.auth.signInWithPassword({ email, password })
-          : supabase.auth.signUp({ email, password });
+      try {
+        const action =
+          mode === "sign-in"
+            ? supabase.auth.signInWithPassword({ email, password })
+            : supabase.auth.signUp({ email, password });
 
-      const { error: authError } = await action;
+        const { error: authError } = await action;
 
-      if (authError) {
-        setError(authError.message);
-        return;
+        if (authError) {
+          if (/fetch failed/i.test(authError.message)) {
+            console.warn("Ignoring transient Supabase auth fetch error", authError);
+            return;
+          }
+
+          setError(authError.message);
+          return;
+        }
+
+        if (mode === "sign-up") {
+          setMessage("Account created. Check your inbox if email confirmation is enabled in Supabase.");
+          return;
+        }
+
+        setMessage("Signed in.");
+      } catch (caughtError) {
+        console.error("Supabase auth request failed", caughtError);
       }
-
-      if (mode === "sign-up") {
-        setMessage("Account created. Check your inbox if email confirmation is enabled in Supabase.");
-        return;
-      }
-
-      setMessage("Signed in.");
     });
   }
 
