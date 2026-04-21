@@ -45,6 +45,7 @@ const supabaseServiceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const openskyClientId = process.env.OPENSKY_CLIENT_ID;
 const openskyClientSecret = process.env.OPENSKY_CLIENT_SECRET;
 const pollIntervalMs = Number.parseInt(process.env.POLL_INTERVAL_MS ?? "300000", 10);
+const fetchTimeoutMs = Number.parseInt(process.env.FETCH_TIMEOUT_MS ?? "20000", 10);
 
 if (!supabaseUrl || !supabaseServiceRoleKey) {
   throw new Error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY.");
@@ -93,22 +94,70 @@ function requireEnv(value: string | undefined, name: string) {
   return value;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function formatError(error: unknown) {
+  if (error instanceof Error) {
+    const cause =
+      typeof error.cause === "object" && error.cause !== null && "message" in error.cause
+        ? String(error.cause.message)
+        : null;
+
+    return cause ? `${error.message} (${cause})` : error.message;
+  }
+
+  return "Unknown worker error";
+}
+
+async function fetchJsonWithRetry(url: string, init: RequestInit, label: string, maxAttempts = 3) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), fetchTimeoutMs);
+
+    try {
+      const response = await fetch(url, {
+        ...init,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeout);
+      return response;
+    } catch (error) {
+      clearTimeout(timeout);
+
+      if (attempt === maxAttempts) {
+        throw new Error(`${label} failed after ${maxAttempts} attempts: ${formatError(error)}`);
+      }
+
+      await sleep(1000 * attempt);
+    }
+  }
+
+  throw new Error(`${label} failed unexpectedly.`);
+}
+
 async function getOpenSkyToken() {
   if (cachedToken && cachedToken.expiresAt > Date.now() + 30_000) {
     return cachedToken.value;
   }
 
-  const response = await fetch("https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
+  const response = await fetchJsonWithRetry(
+    "https://auth.opensky-network.org/auth/realms/opensky-network/protocol/openid-connect/token",
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: requireEnv(openskyClientId, "OPENSKY_CLIENT_ID"),
+        client_secret: requireEnv(openskyClientSecret, "OPENSKY_CLIENT_SECRET"),
+      }),
     },
-    body: new URLSearchParams({
-      grant_type: "client_credentials",
-      client_id: requireEnv(openskyClientId, "OPENSKY_CLIENT_ID"),
-      client_secret: requireEnv(openskyClientSecret, "OPENSKY_CLIENT_SECRET"),
-    }),
-  });
+    "OpenSky auth request",
+  );
 
   if (!response.ok) {
     throw new Error(`OpenSky auth failed with ${response.status}.`);
@@ -133,11 +182,15 @@ async function fetchRegionStates(region: Region) {
     extended: "1",
   });
 
-  const response = await fetch(`https://opensky-network.org/api/states/all?${params.toString()}`, {
-    headers: {
-      Authorization: `Bearer ${token}`,
+  const response = await fetchJsonWithRetry(
+    `https://opensky-network.org/api/states/all?${params.toString()}`,
+    {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     },
-  });
+    `OpenSky states request for ${region.slug}`,
+  );
 
   if (!response.ok) {
     throw new Error(`OpenSky states request failed for ${region.slug} with ${response.status}.`);
@@ -222,7 +275,7 @@ async function syncRegion(region: Region) {
     await recordWorkerRun(region.slug, "ok", flights.length);
     console.log(`[${new Date().toISOString()}] Synced ${flights.length} flights for ${region.slug}`);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown worker error";
+    const message = formatError(error);
     await recordWorkerRun(region.slug, "error", 0, message);
     console.error(`[${new Date().toISOString()}] ${region.slug} sync failed: ${message}`);
   }
