@@ -28,6 +28,10 @@ const defaultPreferences: Omit<UserPreferences, "user_id"> = {
   speed_unit: "kts",
 };
 
+function isTransientFetchError(message: string | null | undefined) {
+  return Boolean(message && /fetch failed/i.test(message));
+}
+
 export function Dashboard({ session }: DashboardProps) {
   const [preferences, setPreferences] = useState<Omit<UserPreferences, "user_id">>(defaultPreferences);
   const [favorites, setFavorites] = useState<FavoriteFlight[]>([]);
@@ -49,6 +53,10 @@ export function Dashboard({ session }: DashboardProps) {
     );
 
     if (upsertError) {
+      if (isTransientFetchError(upsertError.message)) {
+        return;
+      }
+
       setError(upsertError.message);
     }
   }, [session.user.id]);
@@ -144,13 +152,17 @@ export function Dashboard({ session }: DashboardProps) {
       }
 
       if (preferencesResult.error || favoritesResult.error || flightsResult.error || workerRunResult.error) {
-        setError(
+        const nextError =
           preferencesResult.error?.message ??
-            favoritesResult.error?.message ??
-            flightsResult.error?.message ??
-            workerRunResult.error?.message ??
-            "Unable to load dashboard data.",
-        );
+          favoritesResult.error?.message ??
+          flightsResult.error?.message ??
+          workerRunResult.error?.message ??
+          "Unable to load dashboard data.";
+
+        if (!isTransientFetchError(nextError)) {
+          setError(nextError);
+        }
+
         setIsLoading(false);
         return;
       }
@@ -230,6 +242,10 @@ export function Dashboard({ session }: DashboardProps) {
       );
 
       if (upsertError) {
+        if (isTransientFetchError(upsertError.message)) {
+          return;
+        }
+
         setError(upsertError.message);
         return;
       }
@@ -249,6 +265,10 @@ export function Dashboard({ session }: DashboardProps) {
         : await supabase.from("favorite_flights").insert({ user_id: session.user.id, icao24 });
 
       if (result.error) {
+        if (isTransientFetchError(result.error.message)) {
+          return;
+        }
+
         setError(result.error.message);
         return;
       }
