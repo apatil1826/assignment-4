@@ -22,7 +22,7 @@ Assignment 4 submission scaffold for MPCS 51238. This repo contains:
 ### Web
 
 - `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
 
 ### Worker
 
