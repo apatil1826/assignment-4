@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Flight Tracker",
-  description: "Realtime flight tracker with Supabase, Railway, and OpenSky",
+  title: "Weather Tracker",
+  description: "Realtime weather tracker with Supabase, Railway, and Open-Meteo",
 };
 
 export default function RootLayout({

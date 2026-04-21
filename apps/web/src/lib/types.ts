@@ -1,46 +1,57 @@
 import type { RegionSlug } from "@/lib/constants";
 
-export type FlightSnapshot = {
-  icao24: string;
-  callsign: string | null;
-  origin_country: string;
+export type WeatherLocation = {
+  slug: string;
+  name: string;
   region_slug: RegionSlug;
-  longitude: number | null;
-  latitude: number | null;
-  baro_altitude_m: number | null;
-  geo_altitude_m: number | null;
-  velocity_mps: number | null;
-  vertical_rate_mps: number | null;
-  true_track: number | null;
-  on_ground: boolean;
-  squawk: string | null;
-  position_source: number | null;
-  category: number | null;
-  time_position: string | null;
-  last_contact: string;
-  observed_at: string;
+  country_code: string;
+  timezone: string;
+  latitude: number;
+  longitude: number;
+  sort_order: number;
 };
 
-export type UserPreferences = {
+export type WeatherSnapshot = {
+  location_slug: string;
+  observed_at: string;
+  temperature_c: number;
+  apparent_temperature_c: number;
+  relative_humidity: number;
+  precipitation_mm: number;
+  weather_code: number;
+  is_day: boolean;
+  cloud_cover: number;
+  surface_pressure_hpa: number | null;
+  wind_speed_kmh: number;
+  wind_direction_deg: number;
+  wind_gusts_kmh: number | null;
+  daily_high_c: number | null;
+  daily_low_c: number | null;
+  daily_precip_probability: number | null;
+  sunrise: string | null;
+  sunset: string | null;
+};
+
+export type UserWeatherPreferences = {
   user_id: string;
   region_slug: RegionSlug;
   favorites_only: boolean;
-  show_ground_traffic: boolean;
-  altitude_unit: "ft" | "m";
-  speed_unit: "kts" | "kmh";
+  temperature_unit: "c" | "f";
+  wind_unit: "kmh" | "mph";
+  precipitation_unit: "mm" | "in";
 };
 
-export type FavoriteFlight = {
+export type FavoriteLocation = {
   user_id: string;
-  icao24: string;
+  location_slug: string;
   created_at: string;
 };
 
-export type WorkerRun = {
+export type WeatherWorkerRun = {
   id: string;
   region_slug: RegionSlug;
   status: "ok" | "error";
-  flights_processed: number;
+  locations_processed: number;
   error_message: string | null;
   started_at: string;
   completed_at: string;

@@ -61,19 +61,19 @@ export function AuthCard() {
     <section className="grid gap-10 rounded-[2rem] border border-stone-200/80 bg-white/90 p-8 shadow-[0_24px_80px_rgba(68,58,42,0.10)] backdrop-blur md:grid-cols-[1.15fr_0.85fr]">
       <div className="space-y-5">
         <div className="inline-flex rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.24em] text-amber-800">
-          Live aircraft telemetry
+          Live weather snapshots
         </div>
         <h1 className="max-w-xl font-serif text-4xl leading-tight text-stone-900 md:text-6xl">
-          A calm, live view of aircraft motion across your favorite region.
+          A calm, live view of city weather across your favorite region.
         </h1>
         <p className="max-w-lg text-base leading-8 text-stone-600">
-          Track flights as the worker syncs OpenSky state vectors into Supabase, then watch the interface update in real
-          time without reloading the page.
+          Track fresh conditions, save favorite cities, and watch the dashboard update in real time as the worker syncs
+          Open-Meteo data into Supabase.
         </p>
         <div className="grid gap-4 sm:grid-cols-3">
           <FeatureStat label="Worker cadence" value="5 min" />
           <FeatureStat label="Realtime updates" value="Supabase" />
-          <FeatureStat label="Personalized view" value="Favorites" />
+          <FeatureStat label="Personalized view" value="City favorites" />
         </div>
       </div>
 

@@ -1,90 +1,74 @@
-# Flight Tracker Architecture
+# Weather Tracker Architecture
 
 ## Goal
 
-Build a multi-service flight tracker that polls live aircraft state vectors, stores the latest snapshot in Supabase, and pushes updates to authenticated users in real time.
+Build a multi-service weather tracker that polls live forecast data, stores the latest conditions in Supabase, and pushes updates to authenticated users in realtime.
 
 ## Services
 
 ### `apps/web`
 
-- Next.js App Router frontend deployed to Vercel.
-- Tailwind CSS for the UI.
-- Supabase Auth for sign up, sign in, and session management.
-- Supabase Realtime subscriptions for live flight updates.
+- Next.js App Router frontend deployed to Vercel
+- Tailwind CSS for the UI
+- Supabase Auth for sign up, sign in, and session management
+- Supabase Realtime subscriptions for live weather updates
 - Personalized dashboard driven by:
-  - `user_preferences` for region and unit preferences
-  - `favorite_flights` for per-user saved aircraft
+  - `user_weather_preferences`
+  - `favorite_locations`
 
 ### `apps/worker`
 
-- Node.js worker deployed to Railway.
-- Polls OpenSky's `/states/all` endpoint on an interval using OAuth client credentials.
-- Fetches curated regional bounding boxes to control API credit usage.
-- Normalizes aircraft state vectors and upserts them into `public.flight_snapshots`.
-- Records health and freshness data in `public.worker_runs`.
+- Node.js worker deployed to Railway
+- Polls Open-Meteo forecast endpoints for a curated set of cities
+- Seeds the city catalog into `weather_locations`
+- Upserts current conditions and same-day summary data into `weather_snapshots`
+- Records worker health in `weather_worker_runs`
 
 ## Data Flow
 
 1. Railway starts the worker on a fixed interval.
-2. The worker authenticates with OpenSky and requests live state vectors for configured regions.
-3. The worker transforms each state vector into a typed flight snapshot.
-4. The worker upserts flight snapshots into Supabase using the service role key.
-5. Authenticated users load their preferences and the current regional flight list from Supabase.
-6. The frontend subscribes to Realtime changes on `flight_snapshots`, `user_preferences`, and `favorite_flights`.
-7. Any database change is reflected on screen without a refresh.
+2. The worker seeds the curated city list into Supabase.
+3. The worker fetches current and daily forecast data from Open-Meteo for each city.
+4. The worker normalizes and upserts weather snapshots into Supabase.
+5. The frontend loads the user's preferences, favorites, weather locations, and weather snapshots.
+6. Supabase Realtime pushes table changes to the frontend without a page refresh.
 
 ## Tables
 
-### `flight_snapshots`
+### `weather_locations`
 
-- Current aircraft state keyed by `icao24`
-- Includes position, velocity, altitude, heading, callsign, and region
-- Readable by authenticated users
+- Curated city catalog used by the worker and frontend
 
-### `user_preferences`
+### `weather_snapshots`
 
-- One row per authenticated user
-- Stores selected region, favorites-only toggle, unit choices, and whether to show grounded aircraft
+- Latest current conditions and same-day weather summary per city
 
-### `favorite_flights`
+### `user_weather_preferences`
 
-- Join table between `auth.users` and tracked aircraft
-- Used to surface saved aircraft per user
+- Per-user region and unit preferences
 
-### `worker_runs`
+### `favorite_locations`
 
-- Operational visibility for the most recent worker runs
-- Used by the dashboard to show freshness and worker status
+- Per-user favorite city list
 
-## Realtime Strategy
+### `weather_worker_runs`
 
-- Realtime is enabled on `flight_snapshots`, `user_preferences`, `favorite_flights`, and `worker_runs`.
-- The frontend keeps a local copy of the current region's flights and re-fetches when relevant changes arrive.
-- This keeps the UI simple and robust while still meeting the realtime requirement.
+- Operational run history used to surface freshness and failures
 
 ## Security
 
-- Supabase Auth gates dashboard access.
-- Row Level Security allows users to read shared flight data while restricting preferences and favorites to the owning user.
-- The worker uses the service role key and bypasses RLS for writes.
+- Supabase Auth gates dashboard access
+- RLS allows authenticated users to read shared weather data
+- Preferences and favorites are scoped to the owning user
+- The Railway worker writes with the Supabase service role key
 
 ## Deployment
 
-- Vercel:
-  - Root directory: `apps/web`
-  - Build command: default Next.js build
-  - Environment variables: `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-
-- Railway:
-  - Root directory: repository root or `apps/worker`
-  - Build command: `npm run build:worker`
-  - Start command: `npm run start:worker`
-  - Environment variables: `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `OPENSKY_CLIENT_ID`, `OPENSKY_CLIENT_SECRET`, `POLL_INTERVAL_MS`, `OPENSKY_REGION_SLUGS`
+- Vercel hosts the frontend from `apps/web`
+- Railway runs the worker from the repository root using workspace scripts
+- Supabase stores auth, realtime, and weather data
 
 ## Notes
 
-- OpenSky's current API documentation uses OAuth client credentials and a credit-based quota model, so the worker polls curated regions every 5 minutes by default.
-- OpenSky's current Terms of Use also state that operational REST API use requires a written agreement, so confirm the course usage is covered before making the public deployment your final submission.
-- If you want to satisfy the assignment item for Supabase MCP, add the server locally with:
-  - `claude mcp add --transport http supabase https://mcp.supabase.com/mcp`
+- Open-Meteo does not require API credentials for this assignment architecture.
+- The worker polls every 5 minutes by default and uses a small curated set of cities to keep the interface focused and fast.
