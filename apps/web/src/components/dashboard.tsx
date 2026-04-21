@@ -39,6 +39,20 @@ export function Dashboard({ session }: DashboardProps) {
   const [isPending, startTransition] = useTransition();
   const deferredSearch = useDeferredValue(search);
 
+  const ensurePreferencesRow = useCallback(async () => {
+    const { error: upsertError } = await supabase.from("user_preferences").upsert(
+      {
+        user_id: session.user.id,
+        ...defaultPreferences,
+      },
+      { onConflict: "user_id" },
+    );
+
+    if (upsertError) {
+      setError(upsertError.message);
+    }
+  }, [session.user.id]);
+
   const refreshPreferences = useCallback(async () => {
     const { data, error: queryError } = await supabase
       .from("user_preferences")
@@ -149,6 +163,8 @@ export function Dashboard({ session }: DashboardProps) {
           altitude_unit: preferencesResult.data.altitude_unit,
           speed_unit: preferencesResult.data.speed_unit,
         });
+      } else {
+        await ensurePreferencesRow();
       }
 
       setFavorites(favoritesResult.data ?? []);
@@ -195,7 +211,7 @@ export function Dashboard({ session }: DashboardProps) {
       isActive = false;
       void supabase.removeChannel(channel);
     };
-  }, [preferences.region_slug, refreshFavorites, refreshFlights, refreshPreferences, refreshWorkerRun, session.user.id]);
+  }, [ensurePreferencesRow, preferences.region_slug, refreshFavorites, refreshFlights, refreshPreferences, refreshWorkerRun, session.user.id]);
 
   function updatePreference<K extends keyof Omit<UserPreferences, "user_id">>(
     key: K,
@@ -262,6 +278,10 @@ export function Dashboard({ session }: DashboardProps) {
         );
       });
   }, [deferredSearch, favoriteSet, flights, preferences.favorites_only, preferences.show_ground_traffic]);
+
+  const hasWorkerData = workerRun !== null;
+  const hasAnyFlights = flights.length > 0;
+  const showSetupState = !isLoading && !error && !hasAnyFlights;
 
   return (
     <div className="space-y-8">
@@ -398,6 +418,8 @@ export function Dashboard({ session }: DashboardProps) {
                 <LoaderCircle className="h-5 w-5 animate-spin" />
                 Loading live data...
               </div>
+            ) : showSetupState ? (
+              <EmptyState hasWorkerData={hasWorkerData} regionSlug={preferences.region_slug} />
             ) : (
               <div className="overflow-hidden rounded-[1.5rem] border border-stone-200">
                 <div className="grid grid-cols-[1.35fr_1fr_1fr_0.9fr_auto] gap-4 bg-stone-50 px-4 py-3 text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
@@ -458,6 +480,27 @@ export function Dashboard({ session }: DashboardProps) {
           Saving preferences...
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function EmptyState({ hasWorkerData, regionSlug }: { hasWorkerData: boolean; regionSlug: RegionSlug }) {
+  return (
+    <div className="rounded-[1.5rem] border border-dashed border-stone-300 bg-stone-50 px-6 py-10">
+      <p className="text-sm font-semibold uppercase tracking-[0.18em] text-stone-500">No live flights yet</p>
+      <h3 className="mt-3 text-2xl font-semibold text-stone-900">
+        {hasWorkerData ? "The selected region is currently empty." : "The worker has not written any flight data yet."}
+      </h3>
+      <p className="mt-3 max-w-2xl text-sm leading-7 text-stone-600">
+        {hasWorkerData
+          ? `Try another region or wait for the next poll. The dashboard is connected, but there are no recent aircraft snapshots for ${regionSlug}.`
+          : "Next steps: apply supabase/schema.sql in your Supabase SQL editor, deploy the Railway worker from this repo, and add the worker environment variables so it can poll OpenSky and write to Supabase."}
+      </p>
+      <div className="mt-5 flex flex-wrap gap-3 text-sm text-stone-700">
+        <span className="rounded-full border border-stone-200 bg-white px-4 py-2">1. Run the Supabase schema</span>
+        <span className="rounded-full border border-stone-200 bg-white px-4 py-2">2. Deploy the Railway worker</span>
+        <span className="rounded-full border border-stone-200 bg-white px-4 py-2">3. Wait for the first sync</span>
+      </div>
     </div>
   );
 }
